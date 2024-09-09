@@ -68,6 +68,43 @@ class MailBot(models.AbstractModel):
                         message_type=message_type,
                         subtype_id=subtype_id,
                     )
+        elif channel_type == "livechat":  # **Nova condição para Livechat**
+            if ai_bot_user:
+                # **Verifica se a mensagem é do próprio bot (NOVO)**
+                if values.get("author_id") == ai_bot_user.partner_id.id:
+                    return  # Ignora a mensagem se for do próprio bot no livechat
+
+                if values.get("body", "").startswith("!"):
+                    answer_type = "important"
+                else:
+                    answer_type = "chat"
+
+                try:
+                    answer = self._get_answer(
+                        record, answer_type, ai_bot_user=ai_bot_user
+                    )
+                except openai.APIError as err:
+                    _logger.error(err)
+                    if "maximum context length" in err.message:
+                        answer = _(
+                            "ERROR - Sorry, this request requires too many tokens."
+                            'Please consider using the command "\\\\\\\\\\\\\\\\clean" to clear the AI chat.'
+                        )
+                    else:
+                        raise UserError(err.message)
+
+                if answer:
+                    message_type = "comment"
+                    subtype_id = self.env["ir.model.data"]._xmlid_to_res_id(
+                        "mail.mt_comment"
+                    )
+                    record = record.with_context(mail_create_nosubscribe=True).sudo()
+                    record.message_post(
+                        body=answer,
+                        author_id=ai_bot_user.partner_id.id,
+                        message_type=message_type,
+                        subtype_id=subtype_id,
+                    )
 
         elif channel_type in ["group", "channel"]:
             ai_bot_users = (

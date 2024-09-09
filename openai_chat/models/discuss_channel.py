@@ -100,7 +100,24 @@ class Channel(models.Model):
                         limit=1,
                     )
                 )
-
+        # Check if it's a group/channel chat and the bot was mentioned
+        elif self.channel_type == "livechat":
+            ai_bot_user = (
+                self.env["res.users"]
+                .sudo()
+                .search(
+                    [
+                        (
+                            "partner_id",
+                            "in",
+                            self.channel_member_ids.partner_id.ids,
+                        ),
+                        ("is_ai_bot", "=", True),
+                    ],
+                    limit=1,
+                )
+            )
+            return ai_bot_user
         # Check if it's a group/channel chat and the bot was mentioned
         elif self.channel_type in ["group", "channel"]:
             # Check for direct mentions

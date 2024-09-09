@@ -8,12 +8,6 @@ _logger = logging.getLogger(__name__)
 class ResUsers(models.Model):
     _inherit = "res.users"
 
-    # def _force_ai_bot_online(self):
-    #     """Força o status online para usuários AI Bot."""
-    #     ai_bot_users = self.env["res.users"].sudo().search([("is_ai_bot", "=", True)])
-    #     for user in ai_bot_users:
-    #         user.sudo().im_status = "online"  # Usando sudo aqui
-
     chat_completion_id = fields.Many2one("openai.completion", string="Chat Completion")
     is_ai_bot = fields.Boolean(string="Is AI Bot")
     status = fields.Selection(
@@ -28,10 +22,16 @@ class ResUsers(models.Model):
     total_log_record = fields.Integer(
         "Total Log Information", compute="_count_total_log"
     )
+    im_status = fields.Char(string="IM Status", compute="_compute_im_status")
+
+    @api.depends("partner_id.im_status")
+    def _compute_im_status(self):
+        for user in self:
+            user.im_status = user.partner_id.im_status
 
     def _init_messaging(self):
-        if self.sudo()._is_internal():  # Usando sudo aqui
-            self.sudo()._init_ai_bot()  # Usando sudo aqui
+        if self.sudo()._is_internal():
+            self.sudo()._init_ai_bot()
         return super()._init_messaging()
 
     def _init_ai_bot(self):
@@ -42,16 +42,14 @@ class ResUsers(models.Model):
                 self.env["res.partner"]
                 .sudo()
                 .search([("user_ids.is_ai_bot", "=", True)], limit=1)
-            )  # Usando sudo aqui
+            )
             if ai_bot_partner:
                 channel_info = (
                     self.env["mail.channel"]
                     .sudo()
                     .channel_get([ai_bot_partner.id, self.partner_id.id])
-                )  # Usando sudo aqui
-                channel = (
-                    self.env["mail.channel"].sudo().browse(channel_info["id"])
-                )  # Usando sudo aqui
+                )
+                channel = self.env["mail.channel"].sudo().browse(channel_info["id"])
                 return channel
 
     def _count_total_log(self):
@@ -72,8 +70,9 @@ class Partner(models.Model):
         super(Partner, self)._compute_im_status()
         for partner in self:
             if partner.user_ids and partner.user_ids[0].is_ai_bot:
-                partner.sudo().im_status = "online"  # Usando sudo aqui
-                partner.user_ids[0].sudo().status = "done"  # Usando sudo aqui
+                # Define o status do Partner e do Usuário como online de forma síncrona, com sudo
+                partner.sudo().write({"im_status": "online"})
+                partner.user_ids[0].sudo().write({"status": "done"})
 
     ai_bot_id = fields.Char(string="AI Bot ID", compute="_compute_ai_bot_id")
 
